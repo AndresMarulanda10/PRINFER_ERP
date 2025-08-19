@@ -1,265 +1,149 @@
-# ERP para Proveedores Industriales — Diseño específico
+# PRINFER ERP - Sistema de Gestión Industrial B2B
 
-Resumen ejecutivo
-- Objetivo: ERP especializado para proveedores y distribuidores industriales, centrado en cotizaciones B2B, control de márgenes, gestión de pedidos y logística. Diseñado como solución multitenant SaaS y pieza destacada de portafolio.
-- Mercados: Colombia y Estados Unidos, con multimoneda (COP/USD), impuestos (IVA/Sales Tax), y envíos nacionales e internacionales.
-- Diferenciadores: Portal de clientes B2B, precios personalizados por cliente, control de márgenes, backorder/dropship, integraciones e-commerce B2B y API pública.
+## Objetivo
 
-1) Concepto (qué resuelve y para quién)
-- Personas
-  - Ventas (proveedor industrial): necesita generar cotizaciones rápidas con precios y disponibilidad precisos, control de márgenes y seguimiento de pedidos.
-  - Compras (proveedor industrial): gestiona relación con sus propios proveedores, POs y recepciones.
-  - Almacén/Logística: control de stock, picking, packing, etiquetas y despacho.
-  - Administración/Finanzas: AR/AP, impuestos, créditos a clientes, reportes de rentabilidad.
-  - Cliente industrial: solicita cotizaciones (RFQ), realiza pedidos, consulta disponibilidad, hace seguimiento y descarga documentos.
-- Propuesta de valor
-  - Acelera el ciclo quote-to-cash con precios por cliente y control de márgenes.
-  - Portal auto-servicio para clientes B2B (reduce fricción comercial).
-  - Visibilidad end-to-end: costos, existencias, pedidos, despachos y pagos.
-  - Integraciones listas para venta online B2B y envíos.
+PRINFER ERP es una plataforma SaaS especializada para proveedores y distribuidores industriales que transforma el ciclo completo de ventas B2B. Nuestro sistema optimiza cada etapa del proceso, desde las cotizaciones iniciales hasta las entregas finales, permitiendo a las empresas industriales mantener control total sobre sus operaciones comerciales y logísticas.
 
-2) Arquitectura (detallada)
-- Estilo: modular por dominios (Core, Customers, Products, Sales, Inventory, Purchases, Finance, Shipping, Integrations).
-- Frontend
-  - Next.js (App Router) + NextUI/HeroUI + TanStack Query.
-  - Portales separados por rol: Interno (staff), Portal Clientes B2B.
-  - Internacionalización i18n (es/en), formatos por moneda (COP/USD).
-- Backend
-  - NestJS: módulos por dominio, DTOs, pipes, guards, interceptors, filtros de excepción.
-  - REST v1, versionado por ruta (/api/v1), OpenAPI/Swagger y clients TS generados.
-  - Procesos asíncronos: BullMQ + Redis (cotizaciones, PDFs, webhooks, conciliaciones).
-- Datos
-  - PostgreSQL. Multi-tenant con columna tenant_id en todas las tablas + Row Level Security (RLS).
-  - ORM: Prisma o Drizzle. Migraciones versionadas.
-  - Almacenamiento de objetos: S3/R2 para catálogos, facturas, guías, imágenes.
-- Seguridad
-  - Auth: Email/OAuth + organizaciones (Org/Tenant).
-  - RBAC: roles internos (admin, ventas, compras, almacén, finanzas) y externos (cliente).
-  - OWASP: rate limiting, CSRF en portales, validación de payloads, sanitización, headers de seguridad.
-  - Idempotencia en endpoints críticos (creación de órdenes, pagos, webhooks).
-- Observabilidad
-  - Sentry (errores) + OpenTelemetry (trazas) + logs estructurados (pino).
-  - Métricas de negocio: margen por pedido/cliente, fill rate, OTIF a clientes, tiempo de cotización a pedido.
-- Integraciones (objetivo)
-  - E-commerce B2B: Shopify B2B, WooCommerce B2B, APIs propias de clientes.
-  - Envíos: Shippo/EasyPost (global), carriers locales (Servientrega/Coordinadora, UPS/FedEx).
-  - Pagos: Stripe Payment Links, pasarelas locales (Colombia).
-  - Fiscalidad: interfaces para DIAN (Colombia) y sales tax (US).
-- Despliegue/Flexibilidad
-  - Web: Vercel (SSR/ISR y previews).
-  - API/Jobs: Fly.io/Railway/Render.
-  - DB: Neon/Supabase/Postgres gestionado. Backups diarios, PITR.
-  - Infra como código (fase posterior): Terraform.
-- No funcionales
-  - Performance: p95 < 300 ms en consultas típicas (listas paginadas con filtros indexados).
-  - Concurrencia: 50–200 req/s objetivos iniciales; crecimiento horizontal con réplicas.
-  - SLO: uptime 99.5% MVP; error budget y alertas básicas.
+El sistema se destaca por su enfoque en el control de márgenes y precios personalizados por cliente, lo que permite a las empresas maximizar su rentabilidad sin sacrificar competitividad. La gestión integral del inventario y logística elimina cuellos de botella operativos, mientras que el portal de autoservicio para clientes B2B reduce la fricción comercial y mejora la experiencia del cliente.
 
-3) Módulos y modelo de datos (MVP y extensiones)
-- Core
-  - Organization (tenant_id, nombre, plan, dominio), User, Membership (rol), AuditLog (actor, acción, entidad, diff, timestamp).
-  - Config: moneda base por tenant, impuestos, UoM, zonas horarias.
-- Customers (Clientes B2B)
-  - Customer(id, tenant_id, name, contact_info, credit_limit, payment_terms, tax_id).
-  - CustomerPriceList(id, tenant_id, customer_id, active).
-  - CustomerUser(id, customer_id, email, role) para acceso al portal.
-- Products (Catálogo)
-  - Product(id, tenant_id, sku único por tenant, name, description, attributes JSON, cost).
-  - ProductPrice(id, tenant_id, product_id, price_list_id, min_qty, price) para precios por volumen/cliente.
-  - Kit(id, tenant_id, sku, components[]) opcional para productos ensamblados.
-  - Media/Attachment(opcional: imágenes, fichas técnicas).
-- Sales (Ventas)
-  - Quote(id, tenant_id, customer_id, status: Draft|Sent|Accepted|Rejected, valid_until, lines[], totals).
-  - QuoteLine(id, quote_id, product_id, qty, unit_price, discount, tax, margin).
-  - SalesOrder(id, tenant_id, customer_id, quote_id?, status: Confirmed|Allocated|Partial|Shipped|Invoiced|Completed).
-  - SalesOrderLine(id, so_id, product_id, qty, allocated_qty, shipped_qty, unit_price, tax).
-  - CustomerInvoice(id, tenant_id, customer_id, so_id, amount, tax, status: Draft|Sent|Paid).
-- Inventory (Inventario)
-  - Warehouse(id, tenant_id, name, address, country).
-  - Stock(id, tenant_id, product_id, warehouse_id, qty_on_hand, qty_allocated, qty_available).
-  - InventoryTx(id, tenant_id, type: IN|OUT|ADJ|TRANSFER, qty, refs: GRN/SO/SHIP, created_by).
-  - Allocation(id, tenant_id, so_line_id, product_id, warehouse_id, qty).
-- Shipping (Envíos)
-  - Shipment(id, tenant_id, so_id, carrier, tracking_number, status, labels[]).
-  - ShipmentLine(id, shipment_id, so_line_id, product_id, qty).
-  - RateQuote(carrier, service, cost, eta).
-- Purchases (Compras a proveedores)
-  - Supplier(id, tenant_id, name, contact_info).
-  - PurchaseOrder(id, tenant_id, supplier_id, status, linked_so_id?, is_dropship).
-  - PurchaseOrderLine(id, po_id, product_id, qty, price, linked_so_line_id?).
-  - GoodsReceipt(id, po_id, lines[]) para recepción de mercancía.
-  - SupplierInvoice(id, supplier_id, po_id, amount).
-- Finance (Finanzas)
-  - ARTx(id, tenant_id, customer_id, amount, type: Invoice|Payment|Credit|Debit).
-  - APTx(id, tenant_id, supplier_id, amount, type: Invoice|Payment).
-  - Tax(id, tenant_id, code, rate, country, region).
-  - CurrencyRate(from_currency, to_currency, rate, date).
-- Integrations
-  - ConnectorConfig(Shopify/WooCommerce/Shippo), APIKey, WebhookSubscription, Outbox/Event.
+Como pieza central, PRINFER ERP facilita la integración con sistemas de comercio electrónico B2B, permitiendo a las empresas industriales ampliar sus canales de venta manteniendo la coherencia en precios, disponibilidad y servicio al cliente.
 
-4) Funcionalidades (específicas con criterios)
-- Portal de Clientes B2B
-  - Registro por invitación: cliente recibe email, completa perfil, accede a catálogo con precios personalizados.
-  - Solicitar cotización (RFQ): catálogo con precios específicos + cantidades → genera Quote en borrador para revisión interna.
-  - Pedidos: ver histórico, estado en tiempo real, descargar documentos (cotización, SO, factura, guías).
-  - Pagos: enlaces de pago, estado de cuenta, crédito disponible.
-- Ventas y cotizaciones
-  - Pricing avanzado: precios base, listas por cliente, descuentos por volumen.
-  - Cotizador con control de margen: simulación, alertas por debajo de mínimo, aprobaciones.
-  - Flujo Quote → SO → Allocation → Shipment → Invoice con trazabilidad completa.
-  - Backorder y dropship automáticos según configuración y disponibilidad.
-- Inventario
-  - Multi-almacén con transferencias, reservas por SO.
-  - Reglas de asignación (FIFO/FEFO, almacén preferido por cliente/región).
-  - Min/Max, punto de reorden, alerta de stock bajo.
-- Envíos
-  - Selección de carrier (integraciones), impresión de etiquetas/guías.
-  - Notificaciones automáticas a clientes, tracking en portal.
-- Compras a proveedores
-  - Generación automática desde SO (bajo mínimo o dropship).
-  - Recepción, actualización de costos y disponibilidad.
-- Finanzas
-  - AR/AP con términos de pago (Net 30/60).
-  - Límites de crédito, retenciones de impuestos.
-- Reportes
-  - Rentabilidad por cliente/producto/pedido.
-  - Fill rate, OTIF, rotación de inventario.
-  - Forecast basado en histórico.
+## Usuarios y Beneficios
 
-Criterios de aceptación (ejemplos)
-- Cotización a cliente
-  - Dado un vendedor con catálogo y precios por cliente, cuando genera una cotización, entonces puede simular márgenes, enviar PDF al cliente y recibir aceptación en portal.
-- Control de margen
-  - Dado un precio de costo y regla de margen mínimo por categoría, cuando el vendedor intenta cotizar por debajo del mínimo, entonces el sistema alerta y requiere aprobación de nivel superior.
-- Pedido y asignación
-  - Dado un SO confirmado, cuando el sistema asigna stock, entonces reserva inventario específico, genera picking list y actualiza el estado "allocated".
+### Equipo de Ventas
 
-5) API (endpoints clave del MVP)
-- Customers & Pricing
-  - GET /api/v1/customers — lista con filtros (name, status).
-  - GET /api/v1/customers/:id/prices — precios específicos del cliente.
-  - POST /api/v1/customers/:id/users — invitar usuarios al portal.
-- Sales
-  - POST /api/v1/quotes — crear cotización.
-  - POST /api/v1/quotes/:id/send — enviar al cliente (email + portal).
-  - POST /api/v1/quotes/:id/convert — convertir a SO.
-  - GET /api/v1/orders?status=&customer=&date= — listar con filtros.
-- Inventory
-  - GET /api/v1/inventory/stock?product=&warehouse= — disponibilidad.
-  - POST /api/v1/inventory/allocate — asignar a SO.
-  - GET /api/v1/inventory/transactions — movimientos con trazabilidad.
-- Shipping
-  - POST /api/v1/shipments/rates — cotizar envío (carriers).
-  - POST /api/v1/shipments — crear envío y generar etiquetas.
-- Portal de Clientes (API pública)
-  - GET /api/v1/portal/catalog — catálogo con precios del cliente.
-  - POST /api/v1/portal/quote-requests — solicitar cotización.
-  - GET /api/v1/portal/orders — pedidos del cliente.
+El personal comercial encuentra en PRINFER ERP un aliado que potencia su efectividad. El sistema permite generar cotizaciones rápidas con precios personalizados para cada cliente, eliminando la necesidad de consultas manuales o cálculos complejos. El vendedor puede ver en tiempo real el impacto de descuentos o promociones sobre los márgenes, con alertas automáticas cuando se aproxima a límites predefinidos.
 
-Notas de diseño API
-- Autenticación: Bearer JWT o sesión; scoping por tenant.
-- Paginación: cursor o page/size; ordenar; filtros consistentes.
-- Idempotencia: header Idempotency-Key en POST sensibles.
-- Errores: formato uniforme { code, message, details }.
+El seguimiento integral de pedidos proporciona visibilidad completa desde la cotización hasta la entrega, permitiendo responder con precisión a consultas de clientes. El dashboard de oportunidades y conversión ayuda a identificar patrones, priorizar clientes y mejorar tasas de cierre.
 
-6) RBAC (matriz de permisos específica)
-- Internos
-  - admin: acceso completo del tenant (incluye facturación SaaS).
-  - ventas: CRUD Quotes/SO/Customers, lectura Inventory, crear Shipments.
-  - almacén: lectura SO, crear/modificar Allocations/Shipments, ajustes de Stock.
-  - compras: CRUD Suppliers/PO/GRN, lectura Inventory/Products.
-  - finanzas: AR/AP/Invoices, lectura SO/PO, reportes, límites de crédito.
-- Externos
-  - cliente (portal): ver su catálogo con precios, crear RFQs, ver SOs propios, tracking, descargar documentos propios.
-  - cliente_admin: lo anterior + invitar usuarios, límites de compra internos.
+### Clientes B2B
 
-7) Gestión ágil (SCRUM-Ban con detalle)
-- Ceremonias
-  - Planning (cada 2 semanas, 90 min): objetivo del sprint, selección de historias, definición de capacidad.
-  - Daily (15 min): bloqueos, foco de día, revisión de WIP.
-  - Review (30–45 min): demo funcional de incrementos.
-  - Retro (30 min): acciones concretas de mejora (máx 1–2 por sprint).
-  - Grooming (semanal, 45–60 min): refinar historias, criterios, estimación (story points).
-- Tablero Kanban (WIP estricto)
-  - Columnas: Backlog → Ready → In Progress (WIP 2/dev) → Code Review (WIP 2) → Testing/QA → Done.
-  - Políticas: nada entra a In Progress sin criterios de aceptación y diseño de datos/API.
-- Definiciones
-  - Definition of Ready (DoR): historia con user story clara, criterios, diseño de API/datos bosquejado, dependencias identificadas.
-  - Definition of Done (DoD): criterios pasados, tests básicos, manejo de errores, logs, docs API actualizadas, feature usable y demo en staging.
-- Estimación y métricas
-  - Estimar con Fibonacci (1,2,3,5,8). Medir throughput, lead-time, WIP aging.
-  - Objetivo: 1–2 incrementos demoables por sprint que aporten valor visible.
+Los clientes industriales disfrutan de un portal de autoservicio disponible 24/7, eliminando esperas y comunicaciones innecesarias. Cada cliente accede a un catálogo personalizado que refleja sus condiciones comerciales específicas, incluyendo precios negociados, descuentos por volumen y productos relevantes para su industria.
 
-8) Roadmap por sprints (específico)
-- Sprint 1: Fundaciones + Catálogo con precios por cliente + Cotizaciones
-  - Setup repositorio, base multitenant, RBAC inicial.
-  - Importación de productos, configuración de precios por cliente.
-  - Cotizador con control de margen y envío al cliente (PDF/email).
-  - Entregables: demo "selecciono cliente → catálogo muestra precios específicos → genero cotización con alertas de margen → envío PDF → trazabilidad".
-- Sprint 2: Pedidos + Inventario + Asignación
-  - Flujo Quote → SO, asignación de stock, reglas de backorder/dropship.
-  - Estado de pedido en tiempo real, asignación manual/automática.
-  - Entregables: demo "Quote aceptada → SO → asignación de stock → picking list → estado actualizado y visible al cliente".
-- Sprint 3: Portal de Clientes B2B + Envíos
-  - Portal para clientes: catálogo personalizado, RFQs, seguimiento de pedidos.
-  - Integración básica de envíos (rate shopping, etiquetas).
-  - Entregables: demo "cliente solicita cotización en portal → vendedor procesa → cliente acepta → tracking".
+La capacidad de solicitar y dar seguimiento a cotizaciones directamente desde el portal agiliza el proceso de compra, mientras que la visualización en tiempo real del estado de pedidos y envíos proporciona transparencia total. Los clientes pueden además descargar documentación comercial, consultar su historial de compras y gestionar usuarios de su organización.
 
-Backlog detallado (historias ejemplo con criterios)
-- Épica: Pricing y Cotizaciones
-  - Historia: como vendedor, configuro precios específicos por cliente.
-    - Criterios: crear lista base, asignar a cliente, override de SKUs específicos, validar coherencia.
-  - Historia: como vendedor, genero cotización con control de margen.
-    - Criterios: alerta si margen < mínimo por categoría, requiere aprobación para continuar, simula impacto de descuentos.
-- Épica: Portal de Clientes
-  - Historia: como cliente, solicito cotización (RFQ) desde el portal.
-    - Criterios: veo mi catálogo con mis precios, añado cantidades, genero solicitud, recibo confirmación, veo estado.
-  - Historia: como cliente, acepto cotización y convierto a pedido.
-    - Criterios: veo validez, T&C, confirmo, genera SO en sistema.
-- Épica: Gestión de pedidos
-  - Historia: como vendedor, gestiono pedidos con asignación de stock.
-    - Criterios: veo disponibilidad, asigno manual o automático, genero picking list, cambio estados.
-  - Historia: como operador de almacén, preparo pedidos con guía visual.
-    - Criterios: lista de picking por ubicación, confirmación de cantidades, validación.
-- Épica: Envíos
-  - Historia: como operador logístico, genero etiquetas y guías.
-    - Criterios: selecciono carrier, dimensiones, genero PDF/ZPL, registro tracking.
-- Épica: Reportes
-  - Historia: como gerente, veo rentabilidad por cliente/producto.
-    - Criterios: filtros por período, drill-down, export Excel/PDF.
+### Almacén/Logística
 
-9) Riesgos y mitigaciones
-- Complejidad de pricing B2B: modelo flexible pero con defaults sensatos; validación de coherencia para evitar errores de precio.
-- Integración con carriers variables por país: abstracción por carrier, mapeo de servicios, cache de tarifas.
-- Límites de crédito y términos de pago: workflows de aprobación, alertas, bloqueo configurable.
-- Escalabilidad multi-tenant: RLS en Postgres, particionado futuro por tenant_id, índices específicos.
+El personal de operaciones logísticas se beneficia de un sistema que optimiza cada aspecto del manejo de inventario. La gestión multialmacén permite visualizar y controlar stock en múltiples ubicaciones, con reglas inteligentes de asignación que consideran factores como proximidad al cliente, niveles de stock y fechas de vencimiento.
 
-10) Estrategia de pruebas y datos
-- Unit tests: servicios de dominio (cálculo de precios, márgenes, asignaciones), validaciones.
-- Integration tests: endpoints críticos (cotización, pedido, asignación).
-- E2E liviano: flujos clave con datos semilla (Playwright).
-- Datos semilla realistas: 2 tenants demo, 10 clientes, 500 SKUs con precios variables, 50 quotes/SOs en distintos estados.
+Los procesos de picking y packing se optimizan mediante listas inteligentes que minimizan desplazamientos y errores. La integración nativa con transportadoras automatiza la cotización de envíos, generación de etiquetas y seguimiento, mientras que el control de inventario en tiempo real previene problemas de sobre-venta o stock inmovilizado.
 
-11) "Wow features" planificadas
-- Simulador de márgenes con what-if para descuentos y promociones.
-- Sugeridor de cross-sell/up-sell basado en histórico de pedidos.
-- Calculador de lead time dinámico basado en histórico de proveedores.
-- Integración con plataformas de procurement de clientes (Ariba, Coupa) vía conectores.
-- App móvil (Expo) para vendedores en campo y operadores de almacén.
-- Dashboard personalizado por rol con KPIs críticos.
+### Finanzas/Administración
 
-12) Métricas y KPIs (definiciones)
-- Tiempo de cotización: solicitud RFQ → envío de Quote.
-- Tasa de conversión: Quotes enviadas → SOs confirmados.
-- Fill rate: líneas servidas completas / líneas pedidas.
-- OTIF a clientes: On-Time In-Full / total pedidos.
-- Rotación de inventario: Costo de ventas / inventario promedio.
-- Margen promedio por cliente/categoría.
+El departamento financiero cuenta con herramientas robustas para el control de créditos y pagos, con automatización de procesos como la facturación electrónica y la conciliación. Los reportes de rentabilidad permiten analizar márgenes por cliente, producto, vendedor o región, identificando oportunidades de mejora.
 
-Apéndice: índices recomendados
-- products: (tenant_id, sku) unique; (tenant_id, name) gin_trgm opcional.
-- product_price: (tenant_id, product_id, price_list_id, min_qty).
-- stock: (tenant_id, product_id, warehouse_id).
-- sales_order: (tenant_id, customer_id, status, created_at).
-- allocation: (tenant_id, so_line_id); (tenant_id, product_id, warehouse_id).
-- inventory_tx: (tenant_id, created_at, type).
+La gestión fiscal integrada maneja correctamente los requisitos específicos de Colombia (DIAN, IVA, retenciones) y Estados Unidos (Sales Tax por estado), reduciendo riesgos de incumplimiento. El análisis financiero detallado por cliente y producto ayuda a tomar decisiones estratégicas sobre líneas de negocio, política de precios y términos comerciales.
+
+## Módulos Principales
+
+### 1. Gestión Comercial
+
+El corazón del sistema es el módulo de gestión comercial, donde se manejan cotizaciones con control preciso de márgenes. Cada cotización puede simularse con diferentes escenarios de descuentos, visualizando el impacto en la rentabilidad. El sistema implementa flujos de aprobación cuando las cotizaciones caen por debajo de márgenes mínimos predefinidos por categoría o cliente.
+
+La gestión de pedidos proporciona trazabilidad completa, desde la aceptación de la cotización hasta la entrega final. El sistema mantiene un registro detallado de cada etapa, permitiendo identificar cuellos de botella y oportunidades de mejora en el proceso comercial.
+
+Los precios personalizados por cliente se manejan mediante un sistema flexible de listas de precios y reglas, que pueden incluir descuentos por volumen, promociones temporales y precios especiales para SKUs específicos. Todo esto se integra perfectamente con el portal B2B para clientes, donde cada empresa visualiza su catálogo personalizado.
+
+### 2. Inventario y Logística
+
+El control multialmacén permite gestionar inventario en diferentes ubicaciones físicas, con visibilidad completa de niveles de stock, productos en tránsito y reservas. El sistema implementa controles avanzados como puntos de reorden, stock mínimo/máximo y alertas automatizadas.
+
+El proceso de asignación y reservas garantiza que los productos prometidos a un cliente estén disponibles cuando se necesiten. Las reglas de asignación pueden configurarse según estrategias como FIFO/FEFO o preferencias por cliente/región, optimizando tanto el servicio al cliente como la rotación de inventario.
+
+El picking y packing se optimiza mediante listas inteligentes que agrupan productos por ubicación en almacén, reduciendo tiempos y errores. El sistema registra cada confirmación de picking, manteniendo precisión en los niveles de inventario y trazabilidad completa.
+
+La integración con transportadoras automatiza la cotización de envíos, generación de etiquetas y actualización de tracking. El sistema se conecta con Shippo/EasyPost para cobertura global, así como con carriers locales como Servientrega/Coordinadora en Colombia y UPS/FedEx en Estados Unidos.
+
+### 3. Compras
+
+La gestión de proveedores centraliza toda la información relevante como contactos, condiciones comerciales, lead times y calificaciones de desempeño. El sistema facilita la selección del proveedor óptimo para cada necesidad, considerando factores como precio, calidad y tiempos de entrega.
+
+Las órdenes de compra pueden generarse manualmente o automáticamente a partir de niveles de stock o pedidos de clientes. El sistema permite órdenes dropship vinculadas directamente a pedidos específicos, manteniendo la trazabilidad completa desde el cliente hasta el proveedor.
+
+El proceso de recepción de mercancía verifica cantidades, calidad y correspondencia con la orden de compra. Cada recepción actualiza automáticamente los niveles de inventario, costos promedio y disponibilidad para pedidos pendientes.
+
+El control de costos mantiene un registro histórico de variaciones, permitiendo análisis de tendencias y negociaciones más efectivas con proveedores. El sistema calcula automáticamente el impacto de cambios en costos sobre los márgenes de productos y pedidos.
+
+### 4. Finanzas
+
+La facturación electrónica cumple con requisitos regulatorios específicos de cada país. Para Colombia, se integra directamente con la DIAN, mientras que para Estados Unidos maneja correctamente el Sales Tax según la jurisdicción aplicable.
+
+La gestión de cuentas por cobrar y pagar proporciona visibilidad completa del flujo de efectivo, con automatización de recordatorios, estados de cuenta y conciliación. El sistema implementa términos de pago flexibles como Net 30/60, con cálculo automático de fechas de vencimiento y intereses cuando aplica.
+
+El control de créditos permite definir límites por cliente, con alertas y bloqueos configurables cuando se aproximan o superan dichos límites. El sistema facilita workflows de aprobación para excepciones, manteniendo control mientras se preserva la flexibilidad comercial.
+
+Los reportes financieros proporcionan insights accionables sobre rentabilidad, tendencias de ventas, efectividad de cobros y proyecciones. Cada reporte puede filtrarse por múltiples dimensiones y exportarse en formatos como Excel o PDF.
+
+### 5. Integraciones
+
+La integración con plataformas e-commerce B2B como Shopify B2B y WooCommerce B2B sincroniza catálogos, precios, inventario y pedidos. Esto permite a las empresas industriales expandir sus canales de venta manteniendo una operación unificada.
+
+La conectividad con transportadoras facilita la cotización en tiempo real, generación de etiquetas y seguimiento automatizado. El sistema implementa una capa de abstracción que estandariza la comunicación con diferentes carriers, simplificando la gestión.
+
+Las integraciones de pago con Stripe y pasarelas locales facilitan el cobro seguro y la conciliación automática. El sistema mantiene un registro detallado de cada transacción, con trazabilidad completa desde el pedido hasta el pago.
+
+La API pública documentada permite a clientes enterprise integrar PRINFER ERP con sus propios sistemas. Esta API sigue mejores prácticas como versionado, autenticación robusta y rate limiting, facilitando integraciones confiables y mantenibles.
+
+## Arquitectura Técnica
+
+### Frontend
+
+La interfaz de usuario está desarrollada con Next.js y NextUI, proporcionando una experiencia moderna, responsiva y de alto rendimiento. El sistema implementa dos portales distintos pero coherentes: uno interno para staff y otro externo para clientes B2B, cada uno optimizado para sus usuarios específicos.
+
+El soporte multiidioma (español e inglés) está integrado nativamente, con capacidad de extensión a otros idiomas. Todos los elementos de interfaz, notificaciones y documentos respetan el idioma preferido del usuario, mejorando la experiencia global.
+
+El diseño responsive y PWA (Progressive Web App) garantiza una experiencia óptima en dispositivos móviles y de escritorio, con funcionalidad offline para operaciones críticas y sincronización automática cuando se restaura la conectividad.
+
+### Backend
+
+El backend está construido sobre NestJS, implementando una arquitectura modular por dominios que refleja la lógica de negocio. Cada módulo (Ventas, Inventario, Compras, etc.) es independiente pero interoperable, facilitando mantenimiento y extensiones.
+
+La API REST está completamente documentada con OpenAPI/Swagger, incluyendo tipos, validaciones y ejemplos. El versionado por ruta (/api/v1) garantiza compatibilidad hacia atrás mientras el sistema evoluciona.
+
+Los procesos asíncronos como generación de PDFs, notificaciones y sincronizaciones se manejan con BullMQ y Redis, garantizando fiabilidad y escalabilidad. Cada job es idempotente, con reintentos automáticos y mecanismos de dead letter queue.
+
+El multitenancy seguro aísla completamente los datos entre diferentes organizaciones cliente, utilizando Row Level Security a nivel de base de datos y scoping por tenant en cada capa de la aplicación.
+
+### Infraestructura
+
+La base de datos PostgreSQL proporciona la combinación ideal de robustez, flexibilidad y performance. El esquema está optimizado con índices cuidadosamente diseñados para consultas frecuentes, y el particionado futuro por tenant_id garantizará escalabilidad horizontal.
+
+El almacenamiento de objetos en S3/R2 maneja eficientemente documentos, imágenes y archivos adjuntos. Cada objeto tiene permisos granulares y URLs firmadas temporales, garantizando seguridad y accesibilidad apropiada.
+
+El cache Redis optimiza performance para consultas frecuentes y datos de referencia, con invalidación inteligente para mantener coherencia. Este cache también soporta la capa de rate limiting y las sesiones distribuidas.
+
+El CI/CD automatizado garantiza despliegues confiables y frecuentes, con tests automáticos, validaciones estáticas y entornos de preview. Cada componente es desplegado en la infraestructura óptima: frontend en Vercel, API en Fly.io/Railway, y base de datos en Neon/Supabase.
+
+### Seguridad
+
+La autenticación robusta soporta múltiples métodos (email/password, OAuth) con MFA opcional. Cada sesión tiene un tiempo de vida limitado y puede ser revocada remotamente si es necesario.
+
+El RBAC (Role-Based Access Control) por roles implementa permisos granulares para cada función dentro de la organización. Los roles predefinidos (admin, ventas, compras, etc.) pueden personalizarse según necesidades específicas.
+
+El aislamiento de datos por tenant garantiza que cada organización cliente sólo puede acceder a sus propios datos. Esta separación se implementa tanto a nivel de aplicación como de base de datos con Row Level Security.
+
+La auditoría completa registra cada acción significativa en el sistema, incluyendo qué usuario realizó la acción, cuándo, desde qué dirección IP, y exactamente qué cambios realizó. Estos logs son inmutables y pueden utilizarse para cumplimiento y resolución de incidentes.
+
+## Características Destacadas
+
+El sistema de precios y descuentos flexibles por cliente permite implementar estrategias comerciales sofisticadas. Las empresas pueden definir precios base, aplicar descuentos por volumen, crear promociones temporales y establecer condiciones especiales por cliente o grupo de clientes, todo sin comprometer la claridad o el control.
+
+El control de márgenes con aprobaciones protege la rentabilidad mientras permite flexibilidad comercial. Cuando un vendedor intenta ofrecer un precio por debajo del margen mínimo configurado, el sistema activa automáticamente un flujo de aprobación hacia supervisores o gerentes, manteniendo registro de cada decisión.
+
+La gestión de backorder y dropship automatizados optimiza el servicio al cliente y la eficiencia operativa. El sistema puede configurarse para manejar automáticamente pedidos que exceden el inventario disponible, ya sea reservando futuras recepciones (backorder) o enviando directamente desde el proveedor al cliente (dropship).
+
+El tracking de envíos en tiempo real proporciona visibilidad completa tanto para el personal interno como para los clientes. Las actualizaciones de estado se sincronizan automáticamente desde los carriers, con notificaciones configurables para eventos significativos como despacho, en tránsito o entrega.
+
+Los reportes personalizados por rol entregan la información relevante a cada usuario según su función y responsabilidades. Los vendedores ven métricas de conversión y pipeline, el personal de almacén monitorea niveles de stock y eficiencia de picking, mientras que finanzas accede a indicadores de rentabilidad y flujo de caja.
+
+La API pública documentada permite integraciones profundas con sistemas propios de los clientes. Esta API sigue estándares modernos como OAuth 2.0, JWT, OpenAPI, y proporciona endpoints para todas las operaciones significativas del sistema.
+
+## Soporte y Documentación
+
+La capacitación inicial incluida garantiza que cada organización cliente pueda aprovechar al máximo el sistema desde el primer día. Sesiones personalizadas por rol aseguran que cada usuario comprenda las funcionalidades relevantes para su trabajo.
+
+La documentación técnica y de usuario está siempre actualizada y accesible, incluyendo guías paso a paso, videos tutoriales y ejemplos prácticos. El conocimiento está organizado por roles y casos de uso, facilitando encontrar información relevante.
+
+El soporte multicanal por chat, email y teléfono garantiza asistencia rápida cuando se necesita. El equipo de soporte tiene acceso a herramientas de diagnóstico que permiten identificar y resolver problemas eficientemente.
+
+Los webinars mensuales de mejores prácticas mantienen a los usuarios actualizados sobre nuevas funcionalidades y estrategias de optimización. Estos eventos también facilitan la interacción entre usuarios, creando una comunidad de aprendizaje compartido.
